@@ -1,0 +1,33 @@
+class Prioritization:
+    priority_treshold: int
+
+    @classmethod
+    def prioritization(cls, ukc, max_procs: int, zones: dict, meta: dict, treshold: int = 0): ...
+
+    @staticmethod
+    def calculate_priority(scenario, zones): ...
+
+    @staticmethod
+    def compute_length_score(ukc) -> dict: ...
+
+    @staticmethod
+    def compute_asset_score(zones, nz_stages) -> dict: ...
+
+    @staticmethod
+    def compute_authenticity_score(ukc, nz_stages) -> dict: ...
+
+    @staticmethod
+    def compute_infection_score(zones, infections) -> dict: ...
+
+    @staticmethod
+    def weight_length(x): ...
+
+    @staticmethod
+    def weight_asset(x): ...
+
+    @staticmethod
+    def weight_infection(x): ...
+
+    @staticmethod
+    def weight_authenticity(x): ...
+

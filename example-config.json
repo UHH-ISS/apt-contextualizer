@@ -1,0 +1,23 @@
+{
+    "max_procs": 8,
+    "cache": "cache.json",
+    "event_cache": "event_cache.json",
+    "date_format": "dd/MM/yyyy",
+    "earliest_date": "01/01/2022",
+    "latest_date": "now",
+    "zones": {
+        "Internal": {
+            "subnet": "192.168.0.0/24"
+        }
+    },
+    "elastic": {
+        "addr": "127.0.0.1",
+        "port": 9200,
+        "credentials": ["user", "password"],
+        "indices": ["indexA", "indexB"]
+    },
+    "thehive": {
+        "addr": "127.0.0.1",
+        "port": 9000
+    }
+}
