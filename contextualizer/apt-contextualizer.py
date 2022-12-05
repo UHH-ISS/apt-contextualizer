@@ -22,6 +22,7 @@ import warnings
 from integration.integration import Integration
 from optimization.optimization import Optimization
 from optimization.prioritization import Prioritization
+from util import util
 
 
 def store_to_file(obj, file_name, out_folder='out'):
@@ -39,6 +40,10 @@ def restore_from_file(file_name, folder='out'):
 
 def graph_to_json(dg: nx.DiGraph):
     return json_graph.node_link_data(G=dg)
+
+
+def _log(msg: str):
+    util.log(msg, "contextualizer")
 
 
 class AptContextualizer(Integration):
@@ -592,7 +597,7 @@ class AptContextualizer(Integration):
         alerts = self.get_alerts(earliest_date=earliest_date, latest_date=latest_date, date_format=date_format,
                                  cache=self.cache)
         num_alerts = len(alerts)
-        print(f'{datetime.now()}: processing {num_alerts} meta-alerts')
+        _log(f"processing {num_alerts} meta-alerts")
 
         start = time.time()
         nodes = defaultdict(dict)
@@ -601,7 +606,7 @@ class AptContextualizer(Integration):
         for idx, ma in enumerate(alerts):
             try:
                 nma = self.normalize_alert(ma)
-                earliest_ts, latest_ts = self.get_alert_details(nma)
+                earliest_ts, latest_ts = self.get_alert_timestamps(nma)
             except Exception as e:
                 logging.exception(e)
                 continue  # do not handle alert at all
@@ -629,21 +634,21 @@ class AptContextualizer(Integration):
                 nodes[node_id]['latest'] = latest_ts
 
             if idx % 100 == 0:
-                print(f'{datetime.now()}: {idx}/{num_alerts} ({idx / num_alerts * 100}%)')
+                _log(f"{idx}/{num_alerts} ({idx / num_alerts * 100}%)")
 
-        print(f'{datetime.now()}: processed {num_alerts} meta-alerts in {time.time() - start} seconds')
+        _log(f"processed {num_alerts} meta-alerts in {time.time() - start} seconds")
         num_nodes = len(nodes)
 
-        print(f'{datetime.now()}: aggregating {num_nodes} nodes')
+        _log(f"aggregating {num_nodes} nodes")
         start = time.time()
         referenced_children = set()
         stage_aggregations_per_alert = dict()
 
-        print(f'{datetime.now()}: allocating manager + array')
+        _log("allocating manager + array")
         with multiprocessing.Manager():
             pool = multiprocessing.Pool(processes=self.max_procs)
             idx = 0
-            print('{}: starting pool loop'.format(datetime.now()))
+            _log("starting pool loop")
 
             for res in pool.imap_unordered(AptContextualizer.aggregate_node, zip(nodes.items(), repeat(nodes)),
                                            chunksize=100):
@@ -653,10 +658,10 @@ class AptContextualizer(Integration):
 
                 idx += 1
                 if idx % 100 == 0:
-                    print('{}: {}/{} ({}%)'.format(datetime.now(), idx, num_nodes, idx / num_nodes * 100))
+                    _log(f"{idx}/{num_nodes} ({idx / num_nodes * 100}%)")
 
             pool.close()
-        print('{}: aggregated {} nodes in {} seconds'.format(datetime.now(), num_nodes, time.time() - start))
+        _log(f"aggregated {num_nodes} nodes in {time.time() - start} seconds")
 
         unreferenced_uids = set(stage_aggregations_per_alert.keys()) - referenced_children
         unreferenced_nodes = {unref_uid: nodes[unref_uid] for unref_uid in unreferenced_uids}
@@ -754,13 +759,13 @@ class AptContextualizer(Integration):
         """
 
         if earliest_date:
-            print(f'{datetime.now()}: building memory map of pre- and post-conditions in alerts before {earliest_date}')
+            _log(f"building memory map of pre- and post-conditions in alerts between {earliest_date} and {latest_date}")
 
             # Main Calculation and research
             start = time.time()
             stage_aggregations_per_alert, unreferenced_nodes, nodes = self.build_dict_of_apt_preconditions(
                 earliest_date, latest_date, date_format)
-            print(f'{datetime.now()}: done after {time.time() - start}')
+            _log(f"done after {time.time() - start}")
 
             # store in-mem maps for easier life while debugging, uncomment as needed:
             store_to_file(stage_aggregations_per_alert, 'stage_aggs_original')
@@ -771,7 +776,7 @@ class AptContextualizer(Integration):
             unreferenced_nodes = restore_from_file('unref_original')
             nodes = restore_from_file('nodes')
 
-        print(f'{datetime.now()}: source data, spread in unique directions: {len(stage_aggregations_per_alert)}')
+        _log(f"source data, spread in unique directions: {len(stage_aggregations_per_alert)}")
 
         if not os.path.isdir("out"):
             mkdir("out")
@@ -784,11 +789,11 @@ class AptContextualizer(Integration):
             for a in s.values():
                 c += len(a['child_uids'])
 
-        print(self.stages_stats(stage_aggregations_per_alert))
+        _log(f"stage statistics - {self.stages_stats(stage_aggregations_per_alert)}")
 
         UKC_scenarios, spread_trees, roots = [], [], []
         num_unreferenced = len(unreferenced_nodes)
-        print(f'{datetime.now()}: crunching {c} child-relations to {num_unreferenced} spread-graphs...\n')
+        _log(f"crunching {c} child-relations to {num_unreferenced} spread-graphs...")
 
         # Build Spread Graphs
         start = time.time()
@@ -803,7 +808,7 @@ class AptContextualizer(Integration):
             # AptContextualizer.draw_spread_tree(spread_tree, 'spread_' + start_uid, compact=False)
 
             if idx % 10 == 0:
-                print(f'{datetime.now()}: {idx}/{num_unreferenced} ({idx / num_unreferenced * 100})')
+                _log(f"{idx}/{num_unreferenced} ({idx / num_unreferenced * 100})")
         if self.gca:
             spread_trees, root = Optimization.optimization(spread_graphs=spread_trees, level=self.opt_level,
                                                            max_procs=self.max_procs, alerts=nodes,
@@ -821,18 +826,18 @@ class AptContextualizer(Integration):
                                                                 zones=self.config.get('zones'), meta=UKC_meta)
         UKC_scenarios = Optimization.post_optimization(ukc=UKC_scenarios, level=self.opt_level,
                                                        max_procs=self.max_procs)
-        print('{}: total ukc scenarios: {}'.format(datetime.now(), len(UKC_scenarios)))
+        _log(f"total ukc scenarios: {len(UKC_scenarios)}")
 
         # Saving UKC Scenarios
         num_scenarios = len(UKC_scenarios)
-        print('{}: persisting {} scenarios to graphml/pdf...'.format(datetime.now(), num_scenarios))
+        _log(f"persisting {num_scenarios} scenarios to graphml/pdf...")
         start = time.time()
         for idx, scenario in enumerate(UKC_scenarios):
             AptContextualizer.persist_ukc(ukc=scenario, file_name=f'ukc_{idx}', meta=UKC_meta[scenario.name])
             if idx % 10 == 0:
-                print('{}: {}/{} ({}%)'.format(datetime.now(), idx, num_scenarios, idx / num_scenarios * 100))
-        print(f'{datetime.now()}: persisted {num_scenarios} scenarios in {time.time() - start} seconds')
-        print('Well done Sir! Dismissed!')
+                _log('{}: {}/{} ({}%)'.format(datetime.now(), idx, num_scenarios, idx / num_scenarios * 100))
+        _log(f"persisted {num_scenarios} scenarios in {time.time() - start} seconds")
+        _log(f"exiting..")
 
     def run(self, arg):
         """The main loop. It can communicate via non-blocking asychronous queues with the sending and receiving
@@ -859,7 +864,7 @@ if __name__ == '__main__':
     parser.add_argument('-gca', '--gcalgorithm', help="Mode: 0, 1", action='store_true')
     args = parser.parse_args()
 
-    path = "" if os.getcwd().endswith("apt_contextualizer") else f'apt_contextualizer/'
+    path = "" if os.getcwd().endswith("contextualizer") else f'contextualizer/'
     warnings.filterwarnings("ignore")
-    apt_contextualizer = AptContextualizer(args)
-    apt_contextualizer.run(args.mode)
+    contextualizer = AptContextualizer(args)
+    contextualizer.run(args.mode)

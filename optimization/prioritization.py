@@ -1,5 +1,12 @@
-import ipaddress as ip
 from collections import defaultdict
+from datetime import datetime
+import ipaddress as ip
+
+from util import util
+
+
+def _log(msg: str):
+    util.log(msg, "prioritization")
 
 
 class Prioritization:
@@ -15,7 +22,7 @@ class Prioritization:
                 if meta[scenario.name] >= treshold:
                     output.append(treshold)
             ukc = output
-        print(prio_stats(meta=meta, treshold=40))
+        _log(f"stats: {prio_stats(meta=meta, treshold=40)}")
         return ukc, meta
 
     @classmethod
@@ -202,5 +209,5 @@ def prio_stats(meta, treshold) -> defaultdict:
             if treshold >= meta[ukc]['score']:
                 prune += 1
 
-    print("Would prune: " + str(prune))
+    _log(f"would prune {str(prune)} scenarios")
     return stats

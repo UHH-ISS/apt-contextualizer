@@ -127,3 +127,13 @@ dmypy.json
 
 # Pyre type checker
 .pyre/
+
+# configuration files except default
+*config*.json
+!example-config.json
+
+# caches
+*cache.json
+
+# out directory
+out/*

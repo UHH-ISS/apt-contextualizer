@@ -7,6 +7,11 @@ import networkx as nx
 from networkx.algorithms.isomorphism import DiGraphMatcher
 
 from integration.integration import Integration
+from util import util
+
+
+def _log(msg: str):
+    util.log(msg, "optimization")
 
 
 class Optimization(Integration):
@@ -29,14 +34,12 @@ class Optimization(Integration):
         # Every time:
         start = time.time()
         ukc = prune_identical_ukc_scenarios(ukc, max_procs)
-        print(f'{datetime.now()}: pruned identical scenarios in {time.time() - start} seconds: {len(ukc)} '
-              f'remaining')
+        _log(f"pruned identical scenarios in {time.time() - start} seconds: {len(ukc)} remaining")
 
         if level:
             start = time.time()
             ukc = prune_irrelevant_ukc_scenarios(ukc)
-            print(f'{datetime.now()}: pruned irrelevant scenarios in {time.time() - start} seconds: '
-                  f'{len(ukc)} remaining')
+            _log(f"pruned irrelevant scenarios in {time.time() - start} seconds: {len(ukc)} remaining")
         if level == 2:
             pass
         return ukc
@@ -89,14 +92,14 @@ def prune_identical_ukc_scenarios(ukc_scenarios, max_procs):
     ukc_scenarios = set(ukc_scenarios)
     ukc_scenarios = list(ukc_scenarios)
 
-    print('{}: allocating manager + array'.format(datetime.now()))
+    _log("allocating manager + array")
     with multiprocessing.Manager() as mgr:
         pool = multiprocessing.Pool(processes=max_procs)
         duplicates = mgr.list([False] * len(ukc_scenarios))
 
         idx = 0
         total = len(ukc_scenarios)
-        print('{}: starting pool loop'.format(datetime.now()))
+        _log("starting pool loop")
         for _ in pool.imap_unordered(deduplicate_ukc,
                                      zip(range(len(ukc_scenarios)), repeat(ukc_scenarios), repeat(duplicates)),
                                      chunksize=100):

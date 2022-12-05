@@ -1,12 +1,11 @@
-"""
- Integration for Liva
-"""
+from datetime import datetime
+import ipaddress as ip
 import json
 import logging
+from pathlib import Path
 import uuid
-import ipaddress as ip
 
-import connection_helper.client as es
+from backend import elastic, thehive
 
 
 def valid_ip(ips: str) -> bool:
@@ -61,6 +60,9 @@ class Integration:
         self.config = self.parse_config(config_path)
         self.cache = self.config.get('cache') if self.config.get('cache') else ""
         max_procs = self.config.get('max_procs')
+        self.elastic = None
+        self.thehive = None
+
         if argv.gcalgorithm:
             self.event_cache = self.config.get('event_cache')
         if max_procs:
@@ -77,10 +79,16 @@ class Integration:
             self.zones[name] = networks
 
         if not self.config.get('cache'):
-            # Elastic Init
+            # FIXME: make this more lenient in case values are missing
+
+            # elastic
             if 'elastic' in self.config:
                 cfg = self.config.get('elastic')
-                self.elastic = es.Client(host=cfg['addr'], port=cfg['port'], credentials=cfg['credentials'], indices=cfg['indices'])
+                self.elastic = elastic.Client(host=cfg['addr'], port=cfg['port'], credentials=cfg['credentials'], indices=cfg['indices'])
+            elif 'thehive' in self.config:
+                cfg = self.config.get('thehive')
+                self.thehive = thehive.Client(url=cfg.get('url', 'http://127.0.0.1:9000'), apikey=cfg.get('apikey'))
+
 
     def integrate(self) -> None:
         if self.event:
@@ -99,7 +107,7 @@ class Integration:
             return json.load(f)
 
     @staticmethod
-    def parse_config(config_path: str = "config_standard.json") -> dict:
+    def parse_config(config_path: str = "example-config.json") -> dict:
         with open(config_path) as f:
             return json.load(f)
 
@@ -109,33 +117,49 @@ class Integration:
         :param alert:
         :return: Alert Dictionary
         """
+
+        src = []
+        dest = []
+
         if not alert:
             raise KeyError
-        if not isinstance(alert['attackers'], list):
-            alert['attackers'] = [alert['attackers']]
-        if type(alert['victims']) is not list:
-            alert['victims'] = [alert['victims']]
+        # if not isinstance(alert['attackers'], list):
+        #     alert['attackers'] = [alert['attackers']]
+        # if type(alert['victims']) is not list:
+        #     alert['victims'] = [alert['victims']]
+
+        for art in alert['artifacts']:
+            if "source" in art['message'].lower():
+                src.append(art['data'])
+            elif "dest" in art['message'].lower():
+                dest.append(art['data'])
 
         return {
-            'uid': generate_uuid(),
-            'ts': alert['ts'],  # timestamp
-            'type': alert['type'],  # No use
-            # 'message': alert['zeek']['notice']['msg'],  # probably: 127.0.0.1 -> 127.0.0.2; not used anymore
-            'alert_ids': alert['alert_ids'],  # used: get by uid, list, are ids
-            'attackers': alert['attackers'],  # src ip
-            'victims': alert['victims']  # dest ip
+            'uid': alert['id'],
+            'ts': datetime.fromtimestamp(alert['date'] / 1000),  # timestamp
+            'type': alert['type'],            # informative only
+            'message': alert['description'],  # informative only
+            'alert_ids': [],                  # used: get by uid, list, are ids
+            'attackers': src,                 # src ip(s)
+            'victims': dest                   # dest ip(s)
         }
 
     def get_alerts(self, earliest_date: str, latest_date: str, date_format: str, cache: str):
         """
-        Wrapper for Database Request
+        get alerts from database backend
         """
-        if cache:
+        if cache and Path(cache).is_file():
             with open(cache) as f:
                 return json.load(f)
         else:
-            self.config['elasticsearch']['indices']
+            if self.elastic:
+                # FIXME: integrate elastic
+                # return self.elastic.get_alerts(earliest_date, latest_date, date_format)
+                return []
+            elif self.thehive:
+                return self.thehive.get_alerts(earliest_date, latest_date)
 
-    def get_alert_details(self, ma) -> tuple[str, str]:
+    def get_alert_timestamps(self, alert) -> tuple[str, str]:
         self
-        return ma['ts'], ma['ts']
+        # FIXME: does not handle meta alerts currently
+        return alert['ts'], alert['ts']

@@ -3,4 +3,4 @@ networkx~=2.8.2
 # optional
 #elasticsearch~=8.2.2
 # optional
-#thehive4py~=1.8.0
+thehive4py~=1.8.0
